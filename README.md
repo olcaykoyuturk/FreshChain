@@ -47,6 +47,14 @@ This refactor preserves all functionality while improving readability, maintaina
 
 ---
 
+## Image
+![Home](.github/assets/Home.png)
+![Menu](.github/assets/Menu.png)
+![QR-market](.github/QR-market.png)
+![Summary](.github/assets/Summary.png)
+![Sorgula](.github/assets/Sorgula.png)
+
+
 ## Technology Stack
 
 - **Smart Contracts:** Solidity (EVM compatible)
