@@ -47,12 +47,58 @@ This refactor preserves all functionality while improving readability, maintaina
 
 ---
 
-## Image
-![Home](.github/assets/Home.png)
-![Menu](.github/assets/Menu.png)
-![QR-market](.github/QR-market.png)
-![Summary](.github/assets/Summary.png)
-![Sorgula](.github/assets/Sorgula.png)
+## Application Screenshots
+
+FreshChain provides a role-based traceability dashboard where supply chain actors manage product batches on-chain, while public users can transparently query products using QR codes or Batch IDs.
+
+---
+
+### Home Dashboard
+
+![Home](github/assets/Home.png)
+
+The Home screen presents a high-level overview of the system, including total batch count, products currently on sale, latest blockchain block number, and the active network.  
+It also serves as the main entry point for navigating public queries and market-listed products.
+
+---
+
+### Role-Based Navigation Menu
+
+<p align="center">
+  <img src="github/assets/Menu.png" alt="Menu" width="420">
+</p>
+
+The sidebar menu dynamically adapts to the connected wallet’s role.  
+Authorized roles (Producer, Transporter, Distributor, Retailer, Admin) can only access actions permitted by the smart contract, while public users are limited to read-only views.
+
+---
+
+### Products on Sale (QR Market)
+
+![QR Market](github/assets/QR-market.png)
+
+This screen lists products that have successfully completed the supply chain process (`COMPLETED_PASS`).  
+Each product is automatically assigned a QR code, enabling consumers to verify product authenticity and history using camera-based scanning.
+
+---
+
+### Public Query & QR Scanning
+
+![Sorgula](github/assets/Sorgula.png)
+
+The Query page allows users to retrieve a product’s full lifecycle either by entering a Batch ID manually or by scanning a QR code via the device camera.  
+All retrieved data is read directly from immutable blockchain event logs.
+
+---
+
+### Batch Summary & Timeline
+
+![Summary](github/assets/Summary.png)
+
+The Batch Summary view displays detailed analytics such as quantity, temperature and humidity ranges, inspection results, and ownership transfers.  
+A chronological timeline visualizes every on-chain event from batch creation to final inspection.
+
+
 
 
 ## Technology Stack
