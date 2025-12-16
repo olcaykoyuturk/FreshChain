@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="tr">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FreshChain • Traceability Dashboard</title>
+
+  <!-- Ethers v5 -->
+  <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script>
+    if (typeof ethers === "undefined") {
+      var s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js";
+      document.head.appendChild(s);
+    }
+  </script>
+
+  <link rel="stylesheet" href="./styles.css">
+
+  <!-- QR libs -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+
+<body>
+  <div class="app">
+    <header>
+      <div class="header-inner">
+        <div class="logo">
+          <div class="logo-badge"></div>
+          <div>
+            <div>FreshChain</div>
+            <div class="small" style="margin-top:2px;">Traceability Dashboard • Wallet + Role Based UI</div>
+          </div>
+        </div>
+
+        <div class="header-spacer"></div>
+
+        <div class="pill mono" id="netPill">Network: <span id="netName">—</span></div>
+        <div class="pill mono" id="addrPill" style="display:none;">Addr: <span id="addrShort">—</span></div>
+        <button class="btn primary" id="btnConnect">🔌 Connect Wallet</button>
+        <button class="btn" id="btnLock" style="display:none;">🔒 Admin PIN</button>
+        <button class="btn" id="btnLogout" style="display:none;">🚪 Logout</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside>
+        <div class="aside-top">
+          <div class="role-chip">
+            <div class="chip-row">
+              <div class="small">Contract</div>
+              <span class="badge"><span class="pillcode mono" id="contractShort">—</span></span>
+            </div>
+            <div class="chip-row">
+              <div class="small">Role</div>
+              <div class="badge"><span class="role-dot" id="roleDot"></span><span id="roleLabel">Public</span></div>
+            </div>
+            <div class="chip-row">
+              <div class="small">PIN</div>
+              <div class="badge" id="pinStatus">🔓 Not set</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="nav" id="nav">
+          <div class="item active" data-page="home"><span>🏠 Home</span><span class="tag">Public</span></div>
+          <div class="item" data-page="market"><span>🛍️ Satışta Olan Ürünler</span><span class="tag">Public</span>
+          </div>
+          <div class="item" data-page="query"><span>🔎 Sorgula</span><span class="tag">Public</span></div>
+          <div class="item" data-page="producer" data-need="producer"><span>🧑‍🌾 Producer</span><span
+              class="tag">Create</span></div>
+          <div class="item" data-page="transporter" data-need="transporter"><span>🚚 Transporter</span><span
+              class="tag">Move</span></div>
+          <div class="item" data-page="distributor" data-need="distributor"><span>🏬 Distributor</span><span
+              class="tag">Forward</span></div>
+          <div class="item" data-page="retailer" data-need="retailer"><span>🛒 Retailer</span><span
+              class="tag">Finalize</span></div>
+          <div class="item" data-page="admin" data-need="admin"><span>👑 Admin</span><span class="tag">Roles</span>
+          </div>
+          <div class="hr"></div>
+          <div class="item" data-page="settings"><span>⚙️ Settings</span><span class="tag">Contract</span></div>
+        </div>
+      </aside>
+
+      <main>
+
+
+        <div class="grid">
+
+          <!-- HOME -->
+          <section class="card page" id="page-home">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Home</div>
+                <div class="card-sub">Satıştaki ürünleri gör veya Batch ID/QR ile sorgulama yap.</div>
+              </div>
+              <div class="split">
+                <button class="btn" onclick="gotoPage('market')">🛍️ Satışta Olan Ürünler</button>
+                <button class="btn good" onclick="gotoPage('query')">🔎 Sorgula</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="kpi">
+                <div class="box">
+                  <div class="v" id="homeKpiBatches">—</div>
+                  <div class="l">Toplam Batch</div>
+                </div>
+                <div class="box">
+                  <div class="v" id="homeKpiOnSale">—</div>
+                  <div class="l">Satışta (PASS)</div>
+                </div>
+                <div class="box">
+                  <div class="v" id="homeKpiLastBlock">—</div>
+                  <div class="l">Son Block</div>
+                </div>
+                <div class="box">
+                  <div class="v" id="homeKpiNet">—</div>
+                  <div class="l">Network</div>
+                </div>
+              </div>
+
+              <div class="hr"></div>
+              <div class="small muted" style="line-height:1.5">
+                Created By Olcay Koyutürk (210504017)
+              </div>
+            </div>
+          </section>
+          <!-- QUERY -->
+          <section class="card page" id="page-query" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Sorgula</div>
+                <div class="card-sub">Batch ID (QR) ile ürünün tüm geçmişini gör.</div>
+              </div>
+              <div class="split">
+                <button class="btn" id="btnRefreshFeed">🔄 Refresh Feed</button>
+              </div>
+            </div>
+            <div class="card-body">
+
+              <div class="card" id="qrTopBar" style="position:sticky; top:10px; z-index:20; margin-bottom:14px;">
+                <div class="card-head" style="padding:12px 14px;">
+                  <div>
+                    <div class="card-title" style="font-size:14px;">📷 QR Okut (Public)</div>
+                    <div class="card-sub" style="font-size:12px;">QR içinden batchId alınır ve otomatik sorgulanır.
+                    </div>
+                  </div>
+                  <div class="split">
+                    <button class="btn" id="btnStartQR">▶️ Start</button>
+                    <button class="btn bad" id="btnStopQR" disabled>⏹ Stop</button>
+                  </div>
+                </div>
+                <div class="card-body" style="padding:12px 14px;">
+                  <div class="row" style="align-items:flex-end;">
+                    <div class="field" style="max-width:220px;">
+                      <label>Son Okunan</label>
+                      <input id="qrLast" class="mono" placeholder="—" readonly />
+                    </div>
+                    <div class="field" style="flex:1;">
+                      <label>Veya Batch ID gir</label>
+                      <input id="qrManual" class="mono" placeholder="Örn: 17" />
+                    </div>
+                    <div class="field" style="flex:0 0 auto;">
+                      <button class="btn good" id="btnQRGo">🔎 Getir</button>
+                    </div>
+                  </div>
+                  <div id="qrReaderWrap" style="display:none; margin-top:10px;">
+                    <div id="qrReader" style="width:320px; max-width:100%;"></div>
+                    <div class="small muted" style="margin-top:8px;">Kamera izni ister. Telefonla daha rahat.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="field" style="max-width:220px;">
+                  <label>Batch ID</label>
+                  <input id="qBatchId" placeholder="Örn: 17" class="mono" />
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <button class="btn good" id="btnQuery">🔎 Sorgula</button>
+                </div>
+              </div>
+
+              <div id="batchResult" style="margin-top:14px; display:none;">
+                <div class="hr"></div>
+                <div class="split">
+                  <div>
+                    <div class="card-title" style="font-size:14px;">Batch Summary</div>
+                    <div class="small muted" id="batchSummaryLine">—</div>
+                  </div>
+                  <div class="right">
+                    <span class="badge">Stage: <span class="pillcode mono" id="stageText">—</span></span>
+                    <span class="badge">Inspection: <span class="pillcode mono" id="inspText">—</span></span>
+                  </div>
+                </div>
+
+                <div class="kpi" id="kpis">
+                  <div class="box">
+                    <div class="v" id="kpiKg">—</div>
+                    <div class="l">Quantity (kg)</div>
+                  </div>
+                  <div class="box">
+                    <div class="v" id="kpiTemp">—</div>
+                    <div class="l">Temp (min/avg/max)</div>
+                  </div>
+                  <div class="box">
+                    <div class="v" id="kpiHum">—</div>
+                    <div class="l">Humidity (min/avg/max)</div>
+                  </div>
+                  <div class="box">
+                    <div class="v" id="kpiLogs">—</div>
+                    <div class="l">Logs (T / S)</div>
+                  </div>
+                </div>
+
+                <div class="hr"></div>
+                <div class="card-title" style="font-size:14px;">Timeline</div>
+                <div class="small muted" style="margin-top:6px;">Üretim → Transfer → Sensör → Final kontrol adımlarını
+                  burada görürsün.</div>
+                <div class="timeline" id="timeline" style="margin-top:12px;"></div>
+              </div>
+
+              <div class="hr"></div>
+              <div class="split">
+                <div>
+                  <div class="card-title" style="font-size:14px;">Global Operations</div>
+                  <div class="card-sub">Kontrattaki event kayıtlarından son işlemler.</div>
+                </div>
+                <div class="right">
+                  <span class="badge">Range: <span class="pillcode mono" id="feedRange">—</span></span>
+                </div>
+              </div>
+              <div class="timeline" id="feed" style="margin-top:12px;"></div>
+            </div>
+          </section>
+          <!-- MARKET -->
+          <!-- MARKET -->
+          <section class="card page" id="page-market" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Satışta Olan Ürünler</div>
+                <div class="card-sub">Retailer tarafından bitirilmiş (COMPLETED_PASS) ürünler burada listelenir. Her
+                  ürün için QR oluşur.</div>
+              </div>
+              <div class="split">
+                <button class="btn" id="btnRefreshMarket">🔄 Yenile</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row" style="align-items:flex-end;">
+                <div class="field" style="max-width:320px;">
+                  <label>Filtre (isim içerir)</label>
+                  <input id="marketFilter" placeholder="Örn: Domates" />
+                </div>
+              </div>
+              <div class="hr"></div>
+              <div id="marketList" class="timeline"></div>
+              <div class="small muted" id="marketEmpty" style="display:none; margin-top:10px;">Şu an satışta ürün yok.
+              </div>
+            </div>
+          </section>
+
+
+          <!-- PRODUCER -->
+          <section class="card page" id="page-producer" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Producer Panel</div>
+                <div class="card-sub">Yeni ürün (batch) oluştur, pickup öncesi taşıyıcı değiştir.</div>
+              </div>
+              <div class="right">
+                <span class="badge">Role: <span class="pillcode mono">PRODUCER</span></span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="field">
+                  <label>Ürün adı</label>
+                  <input id="pName" placeholder="Elma" />
+                </div>
+                <div class="field">
+                  <label>Kg</label>
+                  <input id="pKg" placeholder="120" class="mono" />
+                </div>
+                <div class="field">
+                  <label>Atanan Taşımacı Adresi</label>
+                  <input id="pTransporter" placeholder="0x..." class="mono" />
+                  <div class="small muted">Bu adresin Transporter rolünde olması gerekir.</div>
+                </div>
+              </div>
+              <div class="split" style="margin-top:12px;">
+                <button class="btn good" id="btnCreateBatch">➕ Create Batch (Auto ID)</button>
+                <span class="small muted" id="pCreateOut">—</span>
+              </div>
+
+              <div class="hr"></div>
+
+              <div class="card-title" style="font-size:14px;">Update Assigned Transporter</div>
+              <div class="row" style="margin-top:10px;">
+                <div class="field">
+                  <label>Batch ID</label>
+                  <input id="pUpBatchId" placeholder="17" class="mono" />
+                </div>
+                <div class="field">
+                  <label>New Transporter</label>
+                  <input id="pUpTransporter" placeholder="0x..." class="mono" />
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <button class="btn warn" id="btnUpdateTransporter">🔁 Update</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- TRANSPORTER -->
+          <section class="card page" id="page-transporter" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Transporter Panel</div>
+                <div class="card-sub">Atanan batch’leri gör, pickup, sensör logla, distribütöre gönder.</div>
+              </div>
+              <div class="right">
+                <span class="badge">Role: <span class="pillcode mono">TRANSPORTER</span></span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="split">
+                <div>
+                  <div class="card-title" style="font-size:14px;">My Assigned Batches</div>
+                  <div class="small muted">Kontrat: getBatchesAssignedTo(address)</div>
+                </div>
+                <button class="btn" id="btnLoadAssigned">📥 Load</button>
+              </div>
+              <div class="timeline" id="assignedList" style="margin-top:12px;"></div>
+
+              <div class="hr"></div>
+              <div class="card-title" style="font-size:14px;">Actions</div>
+              <div class="row" style="margin-top:10px;">
+                <div class="field">
+                  <label>Batch ID</label>
+                  <input id="tBatchId" placeholder="17" class="mono" />
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <button class="btn good" id="btnAcceptPickup">✅ Accept Pickup</button>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top:10px;">
+                <div class="field">
+                  <label>Temperature (°C)</label>
+                  <input id="tTemp" placeholder="6" class="mono" />
+                </div>
+                <div class="field">
+                  <label>Humidity (%)</label>
+                  <input id="tHum" placeholder="30" class="mono" />
+                </div>
+                <div class="field">
+                  <label>Location</label>
+                  <input id="tLoc" placeholder="Istanbul / Depo 3" />
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <button class="btn" id="btnAddSensor">🌡️ Add Sensor</button>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top:10px;">
+                <div class="field">
+                  <label>Distributor Address</label>
+                  <input id="tDistributor" placeholder="0x..." class="mono" />
+                  <div class="small muted">Hedef adresin Distributor rolünde olması gerekir.</div>
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <span class="badge" style="margin-right:10px;">Selected Batch: <span class="pillcode mono"
+                      id="tSelectedBadge">—</span></span>
+                  <button class="btn warn" id="btnToDistributor">🚚➡️🏬 Transfer</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- DISTRIBUTOR -->
+          <section class="card page" id="page-distributor" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Distributor Panel</div>
+                <div class="card-sub">Batch’i mağazaya yönlendir.</div>
+              </div>
+              <div class="right">
+                <span class="badge">Role: <span class="pillcode mono">DISTRIBUTOR</span></span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="section" style="margin-top:0;">
+                <div class="section-head">
+                  <div>
+                    <div class="section-title">My Batches (Owned)</div>
+                    <div class="muted small">Kontrat: getAllBatchIds() + getBatch() (currentOwner+stage filtre)</div>
+                  </div>
+                  <button class="btn" id="btnLoadAssignedDistributor">📥 Load</button>
+                </div>
+                <div class="list" id="dAssignedList"></div>
+              </div>
+              <div class="divider"></div>
+
+              <div class="row">
+                <div class="field">
+                  <label>Batch ID</label>
+                  <input id="dBatchId" placeholder="17" class="mono" />
+                </div>
+                <div class="field">
+                  <label>Retailer Address</label>
+                  <input id="dRetailer" placeholder="0x..." class="mono" />
+                  <div class="small muted">Hedef adresin Retailer rolünde olması gerekir.</div>
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <span class="badge" style="margin-right:10px;">Selected Batch: <span class="pillcode mono"
+                      id="dSelectedBadge">—</span></span>
+                  <button class="btn warn" id="btnToRetailer">🏬➡️🛒 Transfer</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- RETAILER -->
+          <section class="card page" id="page-retailer" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Retailer Panel</div>
+                <div class="card-sub">Final teslim + inspection (süreç burada biter).</div>
+              </div>
+              <div class="right">
+                <span class="badge">Role: <span class="pillcode mono">RETAILER</span></span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="section" style="margin-top:0;">
+                <div class="section-head">
+                  <div>
+                    <div class="section-title">My Batches (Owned)</div>
+                    <div class="muted small">Kontrat: getAllBatchIds() + getBatch() (currentOwner+stage filtre)</div>
+                  </div>
+                  <button class="btn" id="btnLoadAssignedRetailer">📥 Load</button>
+                </div>
+                <div class="list" id="rAssignedList"></div>
+              </div>
+              <div class="divider"></div>
+
+              <div class="row">
+                <div class="field" style="max-width:220px;">
+                  <label>Batch ID</label>
+                  <input id="rBatchId" placeholder="17" class="mono" />
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <button class="btn good" id="btnPass">✔ Passed</button>
+                  <button class="btn bad" id="btnFail" style="margin-left:8px;">✖ Failed</button>
+                </div>
+              </div>
+              <div class="small muted" style="margin-top:10px;">markAsArrived(batchId, passedInspection)</div>
+            </div>
+          </section>
+
+          <!-- ADMIN -->
+          <section class="card page" id="page-admin" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Admin Panel</div>
+                <div class="card-sub">Adreslere rol ver / rol kaldır (onlyOwner).</div>
+              </div>
+              <div class="right">
+                <span class="badge">Role: <span class="pillcode mono">ADMIN</span></span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="field">
+                  <label>Address</label>
+                  <input id="aAddr" placeholder="0x..." class="mono" />
+                </div>
+                <div class="field">
+                  <label>Role</label>
+                  <select id="aRole">
+                    <option value="producer">Producer</option>
+                    <option value="transporter">Transporter</option>
+                    <option value="distributor">Distributor</option>
+                    <option value="retailer">Retailer</option>
+                  </select>
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <button class="btn good" id="btnGrant">➕ Grant</button>
+                  <button class="btn bad" id="btnRevoke" style="margin-left:8px;">➖ Revoke</button>
+                </div>
+              </div>
+              <div class="small muted" style="margin-top:10px;">Not: Admin = contract owner() adresidir.</div>
+            </div>
+          </section>
+
+          <!-- SETTINGS -->
+          <section class="card page" id="page-settings" style="display:none;">
+            <div class="card-head">
+              <div>
+                <div class="card-title">Settings</div>
+                <div class="card-sub">Kontrat adresi sabit. Ağ değiştirdiğinde doğru network’te olduğundan emin ol.
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="field">
+                  <label>Contract Address</label>
+                  <input id="sContract" class="mono" />
+                </div>
+                <div class="field" style="flex:0 0 auto; align-self:flex-end;">
+                  <button class="btn" id="btnCopyContract">📋 Copy</button>
+                </div>
+              </div>
+              <div class="small muted" style="margin-top:10px;">
+                ABI bu sayfaya gömülü. Sadece bu adresi kullandığı için yanlış kontrata bağlanmaz.
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- PIN Modal -->
+  <div class="modal-backdrop" id="pinModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <div class="modal-title">🔐 Admin PIN</div>
+          <div class="small muted" id="pinHelp">Admin işlemleri için PIN gir.</div>
+        </div>
+        <button class="btn" id="btnClosePin">✖</button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="field">
+            <label>PIN</label>
+            <input id="pinInput" type="password" placeholder="4-8 haneli" class="mono" />
+            <div class="small muted" id="pinHint">İlk kez giriyorsan PIN kaydedilir (bu cihazda). Blockchain'e yazılmaz.
+            </div>
+          </div>
+        </div>
+        <div class="split" style="margin-top:12px;">
+          <button class="btn primary" id="btnPinOk">Continue</button>
+          <button class="btn" id="btnResetPin">Reset PIN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toasts"></div>
+
+
+  <script src="./app.js"></script>
+</body>
+
+</html>
