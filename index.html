@@ -301,37 +301,7 @@
       </aside>
 
       <main>
-        <div class="card" id="qrTopBar" style="position:sticky; top:10px; z-index:20; margin-bottom:14px;">
-          <div class="card-head" style="padding:12px 14px;">
-            <div>
-              <div class="card-title" style="font-size:14px;">📷 QR Okut (Public)</div>
-              <div class="card-sub" style="font-size:12px;">QR içinden batchId alınır ve otomatik sorgulanır.</div>
-            </div>
-            <div class="split">
-              <button class="btn" id="btnStartQR">▶️ Start</button>
-              <button class="btn bad" id="btnStopQR" disabled>⏹ Stop</button>
-            </div>
-          </div>
-          <div class="card-body" style="padding:12px 14px;">
-            <div class="row" style="align-items:flex-end;">
-              <div class="field" style="max-width:220px;">
-                <label>Son Okunan</label>
-                <input id="qrLast" class="mono" placeholder="—" readonly />
-              </div>
-              <div class="field" style="flex:1;">
-                <label>Veya Batch ID gir</label>
-                <input id="qrManual" class="mono" placeholder="Örn: 17" />
-              </div>
-              <div class="field" style="flex:0 0 auto;">
-                <button class="btn good" id="btnQRGo">🔎 Getir</button>
-              </div>
-            </div>
-            <div id="qrReaderWrap" style="display:none; margin-top:10px;">
-              <div id="qrReader" style="width:320px; max-width:100%;"></div>
-              <div class="small muted" style="margin-top:8px;">Kamera izni ister. Telefonla daha rahat.</div>
-            </div>
-          </div>
-        </div>
+        
 
         <div class="grid">
 
@@ -374,6 +344,39 @@
               </div>
             </div>
             <div class="card-body">
+
+              <div class="card" id="qrTopBar" style="position:sticky; top:10px; z-index:20; margin-bottom:14px;">
+                        <div class="card-head" style="padding:12px 14px;">
+                          <div>
+                            <div class="card-title" style="font-size:14px;">📷 QR Okut (Public)</div>
+                            <div class="card-sub" style="font-size:12px;">QR içinden batchId alınır ve otomatik sorgulanır.</div>
+                          </div>
+                          <div class="split">
+                            <button class="btn" id="btnStartQR">▶️ Start</button>
+                            <button class="btn bad" id="btnStopQR" disabled>⏹ Stop</button>
+                          </div>
+                        </div>
+                        <div class="card-body" style="padding:12px 14px;">
+                          <div class="row" style="align-items:flex-end;">
+                            <div class="field" style="max-width:220px;">
+                              <label>Son Okunan</label>
+                              <input id="qrLast" class="mono" placeholder="—" readonly />
+                            </div>
+                            <div class="field" style="flex:1;">
+                              <label>Veya Batch ID gir</label>
+                              <input id="qrManual" class="mono" placeholder="Örn: 17" />
+                            </div>
+                            <div class="field" style="flex:0 0 auto;">
+                              <button class="btn good" id="btnQRGo">🔎 Getir</button>
+                            </div>
+                          </div>
+                          <div id="qrReaderWrap" style="display:none; margin-top:10px;">
+                            <div id="qrReader" style="width:320px; max-width:100%;"></div>
+                            <div class="small muted" style="margin-top:8px;">Kamera izni ister. Telefonla daha rahat.</div>
+                          </div>
+                        </div>
+                      </div>
+
               <div class="row">
                 <div class="field" style="max-width:220px;">
                   <label>Batch ID</label>
@@ -2776,11 +2779,28 @@ init();
 let __qr = { hq:null, running:false };
 
 function parseBatchIdFromText(txt){
-  if(!txt) return null;
-  // allow formats like "FRESHCHAIN|...|123" or "BATCH:123" or just "123"
-  const m = String(txt).match(/(\d{1,18})/g);
-  if(!m || !m.length) return null;
-  return m[m.length-1]; // last number
+  if(txt === null || typeof txt === "undefined") return null;
+  const s = String(txt).trim();
+
+  // 1) Try explicit markers like "BATCH:17" or "batchId=17"
+  //    Accept numeric only because contract expects uint256.
+  let m = s.match(/(?:BATCH\s*[:=\-]\s*|batchId\s*[:=\-]\s*|batch\s*id\s*[:=\-]\s*)(\d{1,78})/i);
+  if(m && m[1]) return m[1];
+
+  // 2) If it's a URL, try query param ?batchId=17 or #batchId=17
+  try{
+    const u = new URL(s);
+    const q = u.searchParams.get("batchId") || u.searchParams.get("batch") || u.searchParams.get("id");
+    if(q && /\d/.test(q)){
+      const mm = String(q).match(/(\d{1,78})/);
+      if(mm) return mm[1];
+    }
+  }catch(_){ /* not a URL */ }
+
+  // 3) Fallback: take the last number anywhere in the string (works with "FRESHCHAIN:BATCH:17")
+  const nums = s.match(/(\d{1,78})/g);
+  if(!nums || !nums.length) return null;
+  return nums[nums.length-1];
 }
 
 async function openPublicTraceWithId(idStr){
@@ -2825,16 +2845,34 @@ async function startQR(){
   __qr.hq = new Html5Qrcode("qrReader");
   __qr.running = true;
 
+  let __failCount = 0;
+
   const onSuccess = async (decodedText)=>{
-    const id = parseBatchIdFromText(decodedText);
-    if(!id) return;
+    const raw = (decodedText ?? "").toString();
+    const id = parseBatchIdFromText(raw);
+
+    // Show something to help debug if parsing fails
+    if(!id){
+      $("qrLast").value = raw ? raw.slice(0, 64) : "—";
+      toast("QR okundu ama batchId bulunamadı", raw ? raw : "Boş çıktı");
+      return;
+    }
+
     $("qrLast").value = id;
+    toast("QR okundu", `Batch ID: ${id}`);
+
     // auto stop after first success (less annoying)
     await stopQR();
     await openPublicTraceWithId(id);
   };
 
-  const onFail = (_)=>{ /* silent */ };
+  const onFail = (_)=>{
+    // avoid spamming; show hint occasionally
+    __failCount++;
+    if(__failCount === 60){
+      toast("QR okunamıyor", "QR'ı kameraya yaklaştır, ışığı artır, QR'ı kadraja tam sığdır. (Tarama devam ediyor)");
+    }
+  };
 
   try{
     await __qr.hq.start(
