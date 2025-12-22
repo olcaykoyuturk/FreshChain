@@ -1,4 +1,3 @@
-/** ========= Contract Config ========= */
 const CONTRACT_ADDRESS = "0x1fc8aBF77339CEee6D165a6F0aBcB6f043197BAe";
 
 const ABI = [
@@ -1583,12 +1582,49 @@ const CONTRACT_ABI = [
 ];
 
 /** ========= Global State ========= */
-let provider = null;
+let provider = null;      // MetaMask provider (write + read)
 let signer = null;
-let contract = null;
+let contract = null;      // write contract (signer connected)
+
+let readProvider = null;  // public read-only RPC provider
+let readContract = null;  // public read-only contract
+
 let userAddress = null;
 let chainId = null;
 
+const DEFAULT_PUBLIC_RPC = "https://ethereum-sepolia.publicnode.com";
+const RPC_STORAGE_KEY = "freshchain_public_rpc";
+
+function getPublicRpcUrl() {
+  try {
+    const v = (localStorage.getItem(RPC_STORAGE_KEY) || "").trim();
+    return v || DEFAULT_PUBLIC_RPC;
+  } catch (_) {
+    return DEFAULT_PUBLIC_RPC;
+  }
+}
+
+function getViewContract() {
+  return contract || readContract || null;
+}
+
+function getLogProvider() {
+  return provider || readProvider || null;
+}
+
+function initReadOnly() {
+  if (typeof ethers === "undefined") return;
+  const url = getPublicRpcUrl();
+  try {
+    readProvider = new ethers.providers.JsonRpcProvider(url);
+    readContract = new ethers.Contract(CONTRACT_ADDRESS, ABI, readProvider);
+    if (typeof $ === "function" && $("sRpc")) $("sRpc").value = url;
+  } catch (e) {
+    console.warn("Read-only init failed", e);
+    readProvider = null;
+    readContract = null;
+  }
+}
 let roles = {
   admin: false,
   producer: false,
@@ -1619,9 +1655,10 @@ const STAGE = {
 };
 
 async function getBatchStage(batchId) {
-  if (!contract) return null;
+  const vc = getViewContract();
+  if (!vc) return null;
   try {
-    const b = await contract.getBatch(batchId);
+    const b = await vc.getBatch(batchId);
     return Number(b.stage);
   } catch (e) {
     return null;
@@ -1871,6 +1908,8 @@ async function connectWallet() {
   $("netName").textContent = `${net.name} (chainId=${net.chainId})`;
   $("contractShort").textContent = shortAddr(CONTRACT_ADDRESS);
   $("sContract").value = CONTRACT_ADDRESS;
+  // Public read-only (no wallet) init
+  initReadOnly();
 
   // PIN flow
   setPinUnlocked(false);
@@ -2088,7 +2127,10 @@ async function refreshFeed() {
   const feed = $("feed");
   feed.innerHTML = "";
 
-  if (!provider) {
+  const lp = getLogProvider();
+  const vc = getViewContract();
+
+  if (!lp || !vc) {
     feed.appendChild(
       renderTimelineItem("Connect Wallet", "Global feed için wallet bağla.", "")
     );
@@ -2098,7 +2140,7 @@ async function refreshFeed() {
 
   try {
     const iface = new ethers.utils.Interface(CONTRACT_ABI);
-    const latest = await provider.getBlockNumber();
+    const latest = await lp.getBlockNumber();
     // Home KPIs
     try {
       $("homeKpiLastBlock").textContent = String(latest);
@@ -2118,7 +2160,7 @@ async function refreshFeed() {
       iface.getEventTopic("ArrivedAndInspected"),
     ];
 
-    const logs = await provider.getLogs({
+    const logs = await lp.getLogs({
       address: CONTRACT_ADDRESS,
       fromBlock,
       toBlock: latest,
@@ -2135,12 +2177,12 @@ async function refreshFeed() {
     // Home KPIs (counts)
     try {
       if (contract) {
-        const ids = await contract.getAllBatchIds();
+        const ids = await vc.getAllBatchIds();
         $("homeKpiBatches").textContent = String(ids.length);
         let pass = 0;
         const limit = Math.min(ids.length, 80); // prevent heavy UI on big chains
         for (let i = 0; i < limit; i++) {
-          const b = await contract.getBatch(ids[i]);
+          const b = await vc.getBatch(ids[i]);
           if (Number(b.stage) === STAGE.COMPLETED_PASS) pass++;
         }
         $("homeKpiOnSale").textContent =
@@ -2201,8 +2243,9 @@ async function refreshFeed() {
 }
 
 async function queryBatch() {
-  if (!provider || !contract) {
-    toast("Wallet yok", "Önce Connect Wallet.");
+  const vc = getViewContract();
+  if (typeof ethers === "undefined" || !vc) {
+    toast("Bağlantı yok", "Okuma için RPC gerekli. Settings > Public RPC URL kısmından doğru RPC gir.");
     return;
   }
   const idStr = $("qBatchId").value.trim();
@@ -2210,7 +2253,7 @@ async function queryBatch() {
   const batchId = ethers.BigNumber.from(idStr);
 
   try {
-    const res = await contract.getBatchHistory(batchId);
+    const res = await vc.getBatchHistory(batchId);
     const batch = res.batch;
     const transfers = res.transfers;
     const sensors = res.sensors;
@@ -2536,7 +2579,7 @@ async function loadAssigned() {
       return;
     }
     for (const id of ids) {
-      const b = await contract.getBatch(id);
+      const b = await vc.getBatch(id);
       const stage = StageMap[Number(b.stage)] || String(b.stage);
       const subtitle = `#${b.batchId} • ${b.productName} • ${b.quantityKg
         }kg • stage=${stage} • producer=${shortAddr(b.producer)}`;
@@ -2797,6 +2840,21 @@ function init() {
     toast("Copied", "Contract address kopyalandı.");
   });
 
+  $("btnApplyRpc")?.addEventListener("click", async () => {
+    const v = ($("sRpc")?.value || "").trim();
+    if (!v) {
+      toast("RPC", "RPC URL boş olamaz.");
+      return;
+    }
+    try {
+      localStorage.setItem(RPC_STORAGE_KEY, v);
+    } catch (_) { }
+    initReadOnly();
+    toast("RPC", "Public (read-only) bağlantı güncellendi.");
+    try { refreshFeed(); } catch (_) { }
+    try { loadMarket(); } catch (_) { }
+  });
+
   // net pill initial
   $("netName").textContent = "—";
 
@@ -2996,9 +3054,10 @@ async function loadMarket() {
   list.innerHTML = "";
   if (empty) empty.style.display = "none";
 
-  if (!contract) {
+  const vc = getViewContract();
+  if (!vc) {
     if (empty) {
-      empty.textContent = "Önce kontrata bağlan (Settings).";
+      empty.textContent = "Okuma için RPC gerekli. Settings > Public RPC URL kısmından doğru RPC gir.";
       empty.style.display = "";
     }
     return;
@@ -3006,7 +3065,7 @@ async function loadMarket() {
 
   let ids = [];
   try {
-    ids = await contract.getAllBatchIds();
+    ids = await vc.getAllBatchIds();
   } catch (e) {
     if (empty) {
       empty.textContent = "getAllBatchIds okunamadı.";
@@ -3020,7 +3079,7 @@ async function loadMarket() {
   const items = [];
   for (const id of ids) {
     try {
-      const b = await contract.getBatch(id);
+      const b = await vc.getBatch(id);
       const stage = Number(b.stage);
       if (stage !== STAGE.COMPLETED_PASS) continue; // satışa sadece PASS
       const name = (b.productName ?? b[1] ?? "").toString();
@@ -3144,4 +3203,15 @@ window.addEventListener("load", () => {
       { capture: false }
     );
   }
+});
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Auto-fill Public RPC in Settings (wallet olmadan da)
+  const rpcInput = document.getElementById("sRpc") || document.getElementById("rpcUrl");
+  if (rpcInput && (!rpcInput.value || rpcInput.value.trim() === "")) {
+    rpcInput.value = DEFAULT_PUBLIC_RPC;
+  }
+  // Init read-only provider/contract if function exists
+  try { if (typeof initReadOnly === "function") initReadOnly(); } catch (_) {}
 });
